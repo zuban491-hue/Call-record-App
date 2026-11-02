@@ -32,7 +32,26 @@ jobs:
 
       - name: Install Android SDK 37
         run: |
-          sdkmanager --install "platforms;android-37" "platform-tools"
+          sdkmanager --install \
+            "platforms;android-37.0" \
+            "build-tools;36.0.0" \
+            "platform-tools"
+
+      - name: Fix Android 37 SDK Directory
+        run: |
+          SDK_ROOT="${ANDROID_HOME:-$ANDROID_SDK_ROOT}"
+
+          if [ -z "$SDK_ROOT" ]; then
+            echo "Android SDK path not found"
+            exit 1
+          fi
+
+          if [ -d "$SDK_ROOT/platforms/android-37.0" ] && \
+             [ ! -e "$SDK_ROOT/platforms/android-37" ]; then
+            ln -s android-37.0 "$SDK_ROOT/platforms/android-37"
+          fi
+
+          ls -la "$SDK_ROOT/platforms/"
 
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v4
