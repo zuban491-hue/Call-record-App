@@ -1,0 +1,86 @@
+
+name: Auto Extract Android Source
+
+on:
+  push:
+    paths:
+      - 'Call_Capture_Legal_Privacy_Data_Controls_SDK37_Source.zip'
+
+permissions:
+  contents: write
+
+jobs:
+  extract:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Extract Android Source
+        run: |
+          python3 - <<'PY'
+          import zipfile
+          import shutil
+          import stat
+          from pathlib import Path, PurePosixPath
+
+          root = Path.cwd().resolve()
+          archive = root / "Call_Capture_Legal_Privacy_Data_Controls_SDK37_Source.zip"
+
+          if not archive.is_file():
+              raise SystemExit("Source ZIP not found")
+
+          with zipfile.ZipFile(archive) as z:
+              entries = z.infolist()
+
+              if len(entries) > 20000:
+                  raise ValueError("Too many files")
+
+              if sum(i.file_size for i in entries) > 2 * 1024**3:
+                  raise ValueError("ZIP exceeds size limit")
+
+              for info in entries:
+                  name = info.filename
+                  p = PurePosixPath(name)
+
+                  if "\\" in name or p.is_absolute() or ".." in p.parts:
+                      raise ValueError("Unsafe ZIP path")
+
+                  if ".git" in p.parts:
+                      raise ValueError("Git metadata blocked")
+
+                  if p.parts[:2] == (".github", "workflows"):
+                      raise ValueError("Workflow overwrite blocked")
+
+                  mode = info.external_attr >> 16
+                  if stat.S_ISLNK(mode):
+                      raise ValueError("Symlinks blocked")
+
+                  target = (root / Path(*p.parts)).resolve()
+
+                  if target != root and root not in target.parents:
+                      raise ValueError("Unsafe destination")
+
+                  if info.is_dir():
+                      target.mkdir(parents=True, exist_ok=True)
+                  else:
+                      target.parent.mkdir(parents=True, exist_ok=True)
+                      with z.open(info) as src, open(target, "wb") as dst:
+                          shutil.copyfileobj(src, dst)
+
+          archive.unlink()
+          print("Android source extracted successfully!")
+          PY
+
+      - name: Commit Source Code
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          git add -A
+
+          if ! git diff --cached --quiet; then
+            git commit -m "Auto extract Android source"
+            git push
+          fi
