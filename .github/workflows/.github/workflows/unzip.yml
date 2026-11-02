@@ -1,0 +1,94 @@
+
+name: Auto Extract Source ZIP
+
+on:
+  push:
+    paths:
+      - 'source.zip'
+
+permissions:
+  contents: write
+
+jobs:
+  extract:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Extract ZIP Safely
+        run: |
+          python3 - <<'PY'
+          import zipfile
+          import shutil
+          import stat
+          from pathlib import Path, PurePosixPath
+
+          root = Path.cwd().resolve()
+          archive = root / "source.zip"
+
+          if not archive.exists():
+              raise SystemExit("source.zip not found")
+
+          with zipfile.ZipFile(archive) as z:
+              entries = z.infolist()
+
+              if len(entries) > 20000:
+                  raise ValueError("Too many files in ZIP")
+
+              total_size = sum(i.file_size for i in entries)
+              if total_size > 2 * 1024 * 1024 * 1024:
+                  raise ValueError("ZIP is too large")
+
+              for info in entries:
+                  name = info.filename
+
+                  if "\\" in name:
+                      raise ValueError("Invalid ZIP path")
+
+                  p = PurePosixPath(name)
+
+                  if p.is_absolute() or ".." in p.parts:
+                      raise ValueError("Unsafe ZIP path")
+
+                  if ".git" in p.parts:
+                      raise ValueError("Git metadata is not allowed")
+
+                  if p.parts[:2] == (".github", "workflows"):
+                      raise ValueError("Workflow files are protected")
+
+                  mode = info.external_attr >> 16
+                  if stat.S_ISLNK(mode):
+                      raise ValueError("Symbolic links are not allowed")
+
+                  target = (root / Path(*p.parts)).resolve()
+
+                  if target != root and root not in target.parents:
+                      raise ValueError("Unsafe extraction destination")
+
+                  if info.is_dir():
+                      target.mkdir(parents=True, exist_ok=True)
+                  else:
+                      target.parent.mkdir(parents=True, exist_ok=True)
+                      with z.open(info) as src, open(target, "wb") as dst:
+                          shutil.copyfileobj(src, dst)
+
+          archive.unlink()
+          print("ZIP extracted successfully!")
+
+          PY
+
+      - name: Commit Extracted Files
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          git add -A
+
+          if ! git diff --cached --quiet; then
+            git commit -m "Auto extract source ZIP"
+            git push
+          else
+            echo "No changes to commit"
+          fi
