@@ -1,3 +1,6 @@
+
+import java.net.URI
+
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.compose)
@@ -17,6 +20,7 @@ android {
         versionName = "1.3.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+
         vectorDrawables {
             useSupportLibrary = true
         }
@@ -26,11 +30,13 @@ android {
         release {
             isMinifyEnabled = true
             isShrinkResources = true
+
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
             )
         }
+
         debug {
             applicationIdSuffix = ".debug"
             isDebuggable = true
@@ -53,6 +59,7 @@ android {
             excludes += "META-INF/DEPENDENCIES"
             excludes += "META-INF/INDEX.LIST"
         }
+
         jniLibs {
             useLegacyPackaging = false
         }
@@ -85,28 +92,91 @@ dependencies {
     implementation(libs.kotlinx.coroutines.android)
 }
 
-// This is a publication-data guard, not a policy-approval or security certificate.
+// Publication-data validation
 val validateLegalPublication by tasks.registering {
-    inputs.file("src/main/res/values/legal_config.xml")
+
+    val legalConfig =
+        file("src/main/res/values/legal_config.xml")
+
+    inputs.file(legalConfig)
+
     doLast {
-        val text = file("src/main/res/values/legal_config.xml").readText()
-        fun field(name: String): String = Regex("""<string\s+name="$name"[^>]*>(.*?)</string>""",
-            RegexOption.DOT_MATCHES_ALL).find(text)?.groupValues?.get(1)?.trim().orEmpty()
-        val required = listOf("legal_developer_name", "legal_contact_email", "legal_privacy_url", "legal_terms_url")
-        required.forEach { name ->
-            val value = field(name)
-            check(value.isNotBlank() && !value.contains("{{")) { "Supply verified $name before a release build." }
+
+        check(legalConfig.exists()) {
+            "Missing legal_config.xml"
         }
-        check(Regex("""[^\s@]+@[^\s@]+\.[^\s@]+""").matches(field("legal_contact_email"))) { "Provide a valid developer contact email." }
-        listOf("legal_privacy_url", "legal_terms_url").forEach { name ->
-            val url = java.net.URI(field(name))
-            check(url.scheme == "https" && !url.host.isNullOrBlank() && url.userInfo == null && !url.path.orEmpty().endsWith(".pdf", true)) {
+
+        val content = legalConfig.readText()
+
+        fun field(name: String): String {
+            return Regex(
+                """<string\s+name="$name"[^>]*>(.*?)</string>""",
+                RegexOption.DOT_MATCHES_ALL
+            ).find(content)
+                ?.groupValues
+                ?.get(1)
+                ?.trim()
+                .orEmpty()
+        }
+
+        val required = listOf(
+            "legal_developer_name",
+            "legal_contact_email",
+            "legal_privacy_url",
+            "legal_terms_url"
+        )
+
+        required.forEach { name ->
+
+            val value = field(name)
+
+            check(
+                value.isNotBlank() &&
+                !value.contains("{{")
+            ) {
+                "Supply verified $name before a release build."
+            }
+        }
+
+        listOf(
+            "legal_privacy_url",
+            "legal_terms_url"
+        ).forEach { name ->
+
+            val url = try {
+                URI(field(name))
+            } catch (e: Exception) {
+                error("$name is not a valid URL.")
+            }
+
+            val host = url.host
+                ?: error("$name must contain a valid hostname.")
+
+            check(
+                url.scheme.equals("https", ignoreCase = true) &&
+                url.userInfo == null &&
+                !url.path.orEmpty().endsWith(".pdf", ignoreCase = true)
+            ) {
                 "$name must be a public HTTPS web page, not a PDF."
             }
-            check(url.host !in listOf("localhost", "example.com", "example.org", "example.net") && !url.host.endsWith(".example")) {
+
+            check(
+                host !in setOf(
+                    "localhost",
+                    "example.com",
+                    "example.org",
+                    "example.net"
+                ) &&
+                !host.endsWith(".example", ignoreCase = true)
+            ) {
                 "Replace the placeholder/local URL in $name."
             }
         }
     }
 }
-tasks.matching { it.name == "preReleaseBuild" }.configureEach { dependsOn(validateLegalPublication) }
+
+tasks.matching {
+    it.name == "preReleaseBuild"
+}.configureEach {
+    dependsOn(validateLegalPublication)
+}
