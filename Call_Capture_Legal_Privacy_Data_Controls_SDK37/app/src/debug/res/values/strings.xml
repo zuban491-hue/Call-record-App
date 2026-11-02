@@ -1,0 +1,4 @@
+<resources>
+    <string name="app_name">Call Capture Test</string>
+    <string name="notification_listener_name">Call Capture Test Notification Access</string>
+</resources>

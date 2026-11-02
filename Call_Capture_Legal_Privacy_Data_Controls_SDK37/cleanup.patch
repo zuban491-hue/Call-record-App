@@ -1,0 +1,238 @@
+--- a/app/src/main/java/com/callcapture/app/service/VoipNotificationListenerService.kt
++++ b/app/src/main/java/com/callcapture/app/service/VoipNotificationListenerService.kt
+@@ -65,7 +65,7 @@
+                 CallType.WHATSAPP, CallType.WHATSAPP_BUSINESS -> prefs.isWhatsAppRecordEnabled
+                 CallType.MESSENGER -> prefs.isMessengerRecordEnabled
+                 CallType.TELEGRAM -> prefs.isTelegramRecordEnabled
+-                else -> true
++                else -> false
+             }
+ 
+             if (isAllowed) {
+--- a/app/src/main/java/com/callcapture/app/service/VoipAccessibilityService.kt
++++ b/app/src/main/java/com/callcapture/app/service/VoipAccessibilityService.kt
+@@ -59,7 +59,7 @@
+             CallType.WHATSAPP, CallType.WHATSAPP_BUSINESS -> prefs.isWhatsAppRecordEnabled
+             CallType.MESSENGER -> prefs.isMessengerRecordEnabled
+             CallType.TELEGRAM -> prefs.isTelegramRecordEnabled
+-            else -> true
++            else -> false
+         }
+         if (!isAllowed) return
+ 
+--- a/app/src/main/java/com/callcapture/app/data/model/RecordingPreferences.kt
++++ b/app/src/main/java/com/callcapture/app/data/model/RecordingPreferences.kt
+@@ -7,8 +7,8 @@
+     VOICE_COMMUNICATION("Voice Communication (Hardware AEC)", MediaRecorder.AudioSource.VOICE_COMMUNICATION),
+     MIC("Standard Microphone", MediaRecorder.AudioSource.MIC),
+     CAMCORDER("Camcorder Microphone", MediaRecorder.AudioSource.CAMCORDER),
+-    VOICE_CALL("Direct Modem Audio (Two-Way)", MediaRecorder.AudioSource.VOICE_CALL),
+-    VOICE_DOWNLINK("Direct Downlink (Remote Caller)", MediaRecorder.AudioSource.VOICE_DOWNLINK),
++    VOICE_CALL("System-only call audio (unavailable to ordinary apps)", MediaRecorder.AudioSource.VOICE_CALL),
++    VOICE_DOWNLINK("System-only downlink (unavailable to ordinary apps)", MediaRecorder.AudioSource.VOICE_DOWNLINK),
+     UNPROCESSED("Unprocessed Raw Mic", 9), // MediaRecorder.AudioSource.UNPROCESSED
+     DEFAULT("System Default", MediaRecorder.AudioSource.DEFAULT)
+ }
+--- a/app/src/main/java/com/callcapture/app/data/preferences/PreferenceManager.kt
++++ b/app/src/main/java/com/callcapture/app/data/preferences/PreferenceManager.kt
+@@ -11,19 +11,19 @@
+         context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+ 
+     var isCellularRecordEnabled: Boolean
+-        get() = prefs.getBoolean(KEY_CELLULAR_ENABLED, true)
++        get() = prefs.getBoolean(KEY_CELLULAR_ENABLED, false)
+         set(value) = prefs.edit().putBoolean(KEY_CELLULAR_ENABLED, value).apply()
+ 
+     var isWhatsAppRecordEnabled: Boolean
+-        get() = prefs.getBoolean(KEY_WHATSAPP_ENABLED, true)
++        get() = prefs.getBoolean(KEY_WHATSAPP_ENABLED, false)
+         set(value) = prefs.edit().putBoolean(KEY_WHATSAPP_ENABLED, value).apply()
+ 
+     var isMessengerRecordEnabled: Boolean
+-        get() = prefs.getBoolean(KEY_MESSENGER_ENABLED, true)
++        get() = prefs.getBoolean(KEY_MESSENGER_ENABLED, false)
+         set(value) = prefs.edit().putBoolean(KEY_MESSENGER_ENABLED, value).apply()
+ 
+     var isTelegramRecordEnabled: Boolean
+-        get() = prefs.getBoolean(KEY_TELEGRAM_ENABLED, true)
++        get() = prefs.getBoolean(KEY_TELEGRAM_ENABLED, false)
+         set(value) = prefs.edit().putBoolean(KEY_TELEGRAM_ENABLED, value).apply()
+ 
+     var audioSourceOption: AudioSourceOption
+@@ -49,7 +49,7 @@
+         set(value) = prefs.edit().putString(KEY_AUDIO_FORMAT, value.name).apply()
+ 
+     var isSpeakerphoneAssistantEnabled: Boolean
+-        get() = prefs.getBoolean(KEY_SPEAKERPHONE_ASSISTANT, true)
++        get() = prefs.getBoolean(KEY_SPEAKERPHONE_ASSISTANT, false)
+         set(value) = prefs.edit().putBoolean(KEY_SPEAKERPHONE_ASSISTANT, value).apply()
+ 
+     var softwareGainMultiplier: Float
+--- a/app/src/main/java/com/callcapture/app/ui/viewmodel/MainViewModel.kt
++++ b/app/src/main/java/com/callcapture/app/ui/viewmodel/MainViewModel.kt
+@@ -294,22 +294,6 @@
+         }
+     }
+ 
+-    fun deleteAllEmptyRecordings() {
+-        stopPlayback()
+-        viewModelScope.launch(Dispatchers.IO) {
+-            val all = recordings.value
+-            for (rec in all) {
+-                if (rec.fileSizeBytes < 10000 || rec.durationMs < 4000) {
+-                    try {
+-                        val file = File(rec.filePath)
+-                        if (file.exists()) file.delete()
+-                    } catch (_: Exception) {}
+-                    dao.deleteRecording(rec)
+-                }
+-            }
+-        }
+-    }
+-
+     fun createShareIntent(recording: RecordingEntity): Intent? {
+         val file = File(recording.filePath)
+         if (!file.exists()) return null
+--- a/app/src/main/java/com/callcapture/app/ui/screens/SettingsScreen.kt
++++ b/app/src/main/java/com/callcapture/app/ui/screens/SettingsScreen.kt
+@@ -210,7 +210,7 @@
+             Spacer(modifier = Modifier.height(20.dp))
+ 
+             // Section 3: VoIP Call Enhancements
+-            SettingsSectionHeader(title = "VoIP Two-Way Audio Enhancement", icon = Icons.AutoMirrored.Filled.VolumeUp)
++            SettingsSectionHeader(title = "Microphone Audio Settings", icon = Icons.AutoMirrored.Filled.VolumeUp)
+             Card(
+                 modifier = Modifier.fillMaxWidth(),
+                 shape = RoundedCornerShape(16.dp),
+@@ -219,7 +219,7 @@
+                 Column(modifier = Modifier.padding(16.dp)) {
+                     SwitchPreference(
+                         title = "Speakerphone Assistant",
+-                        subtitle = "Automatically toggles speakerphone on VoIP calls so both parties are clearly picked up by the microphone.",
++                        subtitle = "Changes the call audio route when enabled. This can expose the conversation nearby; remote audio capture is not guaranteed.",
+                         checked = state.isSpeakerphoneAssistantEnabled,
+                         onCheckedChange = { viewModel.setSpeakerphoneAssistantEnabled(it) }
+                     )
+@@ -270,7 +270,7 @@
+             ) {
+                 Column(modifier = Modifier.padding(16.dp)) {
+                     Text(
+-                        text = "💡 How to get Clear 2-Way Call Audio",
++                        text = "Audio recording limitations",
+                         style = MaterialTheme.typography.titleSmall,
+                         fontWeight = FontWeight.Bold,
+                         color = MaterialTheme.colorScheme.primary
+@@ -278,7 +278,7 @@
+                     Spacer(modifier = Modifier.height(4.dp))
+                     Text(
+                         text = "• Set Audio Input Source to 'Voice Recognition' (Default).\n" +
+-                               "• Use Speakerphone: Turning on the phone loudspeaker allows the microphone to capture both your voice and the caller's voice with 100% clarity.\n" +
++                               "• Use Speakerphone: Speaker audio may reach the microphone, but remote voice capture is not guaranteed and may be silent.\n" +
+                                "• If audio is low on your device, switch Output Format to WAV and increase Software Gain Boost to 3.5x - 4.5x.",
+                         style = MaterialTheme.typography.bodySmall,
+                         color = MaterialTheme.colorScheme.onSurface
+--- a/app/src/main/java/com/callcapture/app/ui/screens/HomeScreen.kt
++++ b/app/src/main/java/com/callcapture/app/ui/screens/HomeScreen.kt
+@@ -116,6 +116,7 @@
+     var isSelectionMode by remember { mutableStateOf(false) }
+     val selectedIds = remember { mutableStateListOf<Long>() }
+     var showBatchDeleteConfirm by remember { mutableStateOf(false) }
++    var recordingPendingDelete by remember { mutableStateOf<RecordingEntity?>(null) }
+ 
+     // Intercept Back Press: dismiss selection mode or search box first before closing the app
+     BackHandler(enabled = isSelectionMode || isSearchActive) {
+@@ -266,14 +267,7 @@
+                                         }
+                                     )
+                                 }
+-                                DropdownMenuItem(
+-                                    text = { Text("Clean Empty / Short Recordings") },
+-                                    leadingIcon = { Icon(Icons.Default.Delete, contentDescription = null, tint = MaterialTheme.colorScheme.error) },
+-                                    onClick = {
+-                                        topMenuExpanded = false
+-                                        viewModel.deleteAllEmptyRecordings()
+-                                    }
+-                                )
++
+                             }
+                         }
+                     }
+@@ -349,7 +343,7 @@
+                         )
+                         Spacer(modifier = Modifier.height(6.dp))
+                         Text(
+-                            text = "Calls from Phone, WhatsApp, and Messenger will automatically appear here once active.",
++                            text = "Recording channels are off by default. Review permissions and limitations before enabling a channel; remote call audio may be unavailable.",
+                             style = MaterialTheme.typography.bodySmall,
+                             color = MaterialTheme.colorScheme.onSurfaceVariant,
+                             textAlign = androidx.compose.ui.text.style.TextAlign.Center
+@@ -394,7 +388,7 @@
+                                     context.startActivity(Intent.createChooser(shareIntent, "Share Call Recording"))
+                                 }
+                             },
+-                            onDelete = { viewModel.deleteRecording(rec) }
++                            onDelete = { recordingPendingDelete = rec }
+                         )
+                     }
+                 }
+@@ -426,6 +420,23 @@
+                 TextButton(onClick = { showBatchDeleteConfirm = false }) {
+                     Text("Cancel")
+                 }
++            }
++        )
++    }
++
++    recordingPendingDelete?.let { rec ->
++        AlertDialog(
++            onDismissRequest = { recordingPendingDelete = null },
++            title = { Text("Delete recording?") },
++            text = { Text("This permanently deletes the selected audio file and its notes.") },
++            confirmButton = {
++                TextButton(onClick = {
++                    viewModel.deleteRecording(rec)
++                    recordingPendingDelete = null
++                }) { Text("Delete", color = MaterialTheme.colorScheme.error) }
++            },
++            dismissButton = {
++                TextButton(onClick = { recordingPendingDelete = null }) { Text("Cancel") }
+             }
+         )
+     }
+--- a/app/src/main/res/xml/file_paths.xml
++++ b/app/src/main/res/xml/file_paths.xml
+@@ -1,6 +1,4 @@
+ <?xml version="1.0" encoding="utf-8"?>
+ <paths xmlns:android="http://schemas.android.com/apk/res/android">
+     <files-path name="recordings" path="recordings/" />
+-    <external-files-path name="ext_recordings" path="recordings/" />
+-    <cache-path name="cache" path="/" />
+ </paths>
+--- a/app/src/main/res/xml/data_extraction_rules.xml
++++ b/app/src/main/res/xml/data_extraction_rules.xml
+@@ -1,9 +1,13 @@
+ <?xml version="1.0" encoding="utf-8"?>
+ <data-extraction-rules>
+     <cloud-backup>
+-        <exclude domain="file" path="recordings" />
++        <exclude domain="file" path="recordings/" />
++        <exclude domain="database" path="." />
++        <exclude domain="sharedpref" path="." />
+     </cloud-backup>
+     <device-transfer>
+-        <include domain="file" path="recordings" />
++        <exclude domain="file" path="recordings/" />
++        <exclude domain="database" path="." />
++        <exclude domain="sharedpref" path="." />
+     </device-transfer>
+ </data-extraction-rules>
+--- a/app/src/main/res/xml/backup_rules.xml
++++ b/app/src/main/res/xml/backup_rules.xml
+@@ -1,4 +1,6 @@
+ <?xml version="1.0" encoding="utf-8"?>
+ <full-backup-content>
+-    <exclude domain="file" path="recordings" />
++    <exclude domain="file" path="recordings/" />
++    <exclude domain="database" path="." />
++    <exclude domain="sharedpref" path="." />
+ </full-backup-content>

@@ -1,0 +1,16 @@
+Changed/added files:
+README.md
+AUDIT_BN.md
+CHANGES.md
+app/src/main/java/com/callcapture/app/service/VoipNotificationListenerService.kt
+app/src/main/java/com/callcapture/app/service/VoipAccessibilityService.kt
+app/src/main/java/com/callcapture/app/data/model/RecordingPreferences.kt
+app/src/main/java/com/callcapture/app/data/preferences/PreferenceManager.kt
+app/src/main/java/com/callcapture/app/ui/viewmodel/MainViewModel.kt
+app/src/main/java/com/callcapture/app/ui/screens/SettingsScreen.kt
+app/src/main/java/com/callcapture/app/ui/screens/HomeScreen.kt
+app/src/main/res/xml/file_paths.xml
+app/src/main/res/xml/data_extraction_rules.xml
+app/src/main/res/xml/backup_rules.xml
+
+Static checks passed; Android build and device tests NOT completed.

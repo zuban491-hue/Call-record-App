@@ -1,0 +1,11 @@
+<resources>
+    <string name="app_name">Call Capture</string>
+    <string name="notification_listener_name">Call Capture Notification Access</string>
+
+    <string name="channel_recording_name">Call Recording Status</string>
+    <string name="channel_recording_desc">Shows ongoing call recording status and controls.</string>
+
+    <string name="notification_title_recording">Recording Call</string>
+    <string name="notification_action_stop">Stop</string>
+    <string name="notification_action_pause">Pause</string>
+</resources>
