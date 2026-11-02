@@ -1,23 +1,24 @@
 
-name: Auto Extract Android Source
+name: Auto Unzip Android Source
 
 on:
   push:
     paths:
       - 'Call_Capture_Legal_Privacy_Data_Controls_SDK37_Source.zip'
+  workflow_dispatch:
 
 permissions:
   contents: write
 
 jobs:
-  extract:
+  unzip:
     runs-on: ubuntu-latest
 
     steps:
       - name: Checkout Repository
         uses: actions/checkout@v4
 
-      - name: Extract Android Source
+      - name: Extract Android Source ZIP
         run: |
           python3 - <<'PY'
           import zipfile
@@ -29,7 +30,7 @@ jobs:
           archive = root / "Call_Capture_Legal_Privacy_Data_Controls_SDK37_Source.zip"
 
           if not archive.is_file():
-              raise SystemExit("Source ZIP not found")
+              raise SystemExit("Source ZIP not found!")
 
           with zipfile.ZipFile(archive) as z:
               entries = z.infolist()
@@ -38,7 +39,7 @@ jobs:
                   raise ValueError("Too many files")
 
               if sum(i.file_size for i in entries) > 2 * 1024**3:
-                  raise ValueError("ZIP exceeds size limit")
+                  raise ValueError("ZIP too large")
 
               for info in entries:
                   name = info.filename
@@ -51,7 +52,7 @@ jobs:
                       raise ValueError("Git metadata blocked")
 
                   if p.parts[:2] == (".github", "workflows"):
-                      raise ValueError("Workflow overwrite blocked")
+                      raise ValueError("Workflow files blocked")
 
                   mode = info.external_attr >> 16
                   if stat.S_ISLNK(mode):
@@ -69,11 +70,10 @@ jobs:
                       with z.open(info) as src, open(target, "wb") as dst:
                           shutil.copyfileobj(src, dst)
 
-          archive.unlink()
-          print("Android source extracted successfully!")
+          print("Source extraction completed!")
           PY
 
-      - name: Commit Source Code
+      - name: Commit Extracted Source
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
@@ -81,6 +81,8 @@ jobs:
           git add -A
 
           if ! git diff --cached --quiet; then
-            git commit -m "Auto extract Android source"
+            git commit -m "Extract Android source automatically"
             git push
+          else
+            echo "No new changes"
           fi
